@@ -1,0 +1,126 @@
+services:
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://shopnow:shopnow@postgres:5432/shopnow
+      REDIS_URL: redis://redis:6379/0
+      SIMULATED_DB_LATENCY_MS: "350"
+      CACHE_TTL_SECONDS: "120"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/system/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker-inventory:
+    build: ./backend
+    restart: unless-stopped
+    command: python -m subscribers.inventory_subscriber
+    environment:
+      DATABASE_URL: postgresql://shopnow:shopnow@postgres:5432/shopnow
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_healthy
+
+  worker-email:
+    build: ./backend
+    restart: unless-stopped
+    command: python -m subscribers.email_subscriber
+    environment:
+      DATABASE_URL: postgresql://shopnow:shopnow@postgres:5432/shopnow
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_healthy
+
+  worker-analytics:
+    build: ./backend
+    restart: unless-stopped
+    command: python -m subscribers.analytics_subscriber
+    environment:
+      DATABASE_URL: postgresql://shopnow:shopnow@postgres:5432/shopnow
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shopnow
+      POSTGRES_PASSWORD: shopnow
+      POSTGRES_DB: shopnow
+    # Sin puerto en host para evitar conflicto con Postgres local (usa docker compose exec postgres psql)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopnow -d shopnow"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:

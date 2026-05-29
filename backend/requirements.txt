@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+prometheus-client
+redis
+psycopg2-binary
+pydantic-settings
+email-validator
