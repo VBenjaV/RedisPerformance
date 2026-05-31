@@ -19,7 +19,7 @@ def list_products(
         key = CACHE_KEYS["products_category"].format(category_id=category_id)
         loader = lambda: repositories.fetch_products(category_id=category_id)
     else:
-        key = "cache:products:all"
+        key = CACHE_KEYS["products_all"]
         loader = lambda: repositories.fetch_products()
 
     data, cache_status = get_or_load(key, loader)
@@ -47,11 +47,20 @@ def get_product(product_id: int, response: Response):
 
 @router.patch("/{product_id}/stock")
 def update_stock(product_id: int, stock: int = Query(..., ge=0), response: Response = None):
-    """
-    Endpoint para practicar invalidación de caché (Etapa 3).
-    Los estudiantes deben asegurar que invalidate_product_caches cubra todos los casos.
-    """
+    """Etapa 3 — invalidación al cambiar stock."""
     updated = repositories.update_product_stock(product_id, stock)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    invalidate_product_caches(product_id=product_id, category_id=updated["category_id"])
+    if response:
+        response.headers["X-Cache-Invalidated"] = "true"
+    return updated
+
+
+@router.patch("/{product_id}/price")
+def update_price(product_id: int, price: float = Query(..., gt=0), response: Response = None):
+    """Etapa 3 — invalidación al cambiar precio."""
+    updated = repositories.update_product_price(product_id, price)
     if not updated:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     invalidate_product_caches(product_id=product_id, category_id=updated["category_id"])

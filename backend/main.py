@@ -3,19 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from prometheus_client import Counter, generate_latest
+from prometheus_client import generate_latest
 
 from db.connection import wait_for_db
+from middleware.metrics import PrometheusMiddleware
 from redis_client import wait_for_redis
-from routers import categories, offers, orders, products, system
-
-REQUEST_COUNTER = Counter(
-    "api_requests_total",
-    "Total de requests HTTP",
-    ["method", "endpoint"],
-)
-CACHE_HIT_COUNTER = Counter("cache_hits_total", "Respuestas servidas desde caché Redis")
-CACHE_MISS_COUNTER = Counter("cache_misses_total", "Respuestas con consulta a PostgreSQL")
+from routers import categories, offers, orders, productos, products, system
 
 
 @asynccontextmanager
@@ -39,9 +32,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(PrometheusMiddleware)
 
 app.include_router(categories.router)
 app.include_router(products.router)
+app.include_router(productos.router)
 app.include_router(offers.router)
 app.include_router(orders.router)
 app.include_router(system.router)

@@ -1,8 +1,10 @@
 """
-Pub/Sub de órdenes — laboratorio guiado del taller.
+Pub/Sub de órdenes — Etapa 4 del taller.
 
-Canal: shopnow:orders
-Los estudiantes implementan la lógica de negocio en cada subscriber.
+Eventos publicados por la API y subscribers:
+  • order.created      — orden registrada (inventario + analytics)
+  • payment.approved   — pago simulado aprobado (correos)
+  • stock.updated      — stock descontado por inventario
 """
 
 import json
@@ -10,6 +12,10 @@ from datetime import datetime, timezone
 
 from config import settings
 from redis_client import get_redis
+
+EVENT_ORDER_CREATED = "order.created"
+EVENT_PAYMENT_APPROVED = "payment.approved"
+EVENT_STOCK_UPDATED = "stock.updated"
 
 
 def publish_order_event(event: dict):

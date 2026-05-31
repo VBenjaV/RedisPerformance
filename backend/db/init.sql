@@ -53,6 +53,12 @@ INSERT INTO products (category_id, name, description, price, stock, image_url, i
     (3, 'Bicicleta urbana', 'Cuadro de aluminio y 7 velocidades.', 459.99, 5, 'https://images.unsplash.com/photo-1485965120188-e220f721d03f?w=600', TRUE),
     (3, 'Mochila deportiva', 'Compartimento impermeable para laptop.', 59.99, 45, 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600', FALSE);
 
+INSERT INTO products (id, category_id, name, description, price, stock, image_url, is_popular) VALUES
+    (15, 1, 'Producto benchmark #15', 'Endpoint de referencia para ab -n 1000 -c 100 /productos/15', 99.99, 100,
+     'https://images.unsplash.com/photo-1505744386214-5093af9ab0cf?w=600', TRUE);
+
+SELECT setval('products_id_seq', (SELECT MAX(id) FROM products));
+
 INSERT INTO offers (title, discount_percent, product_id, active) VALUES
     ('Hot Sale Laptop', 15, 1, TRUE),
     ('Combo oficina', 10, 2, TRUE),

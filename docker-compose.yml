@@ -10,6 +10,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       SIMULATED_DB_LATENCY_MS: "350"
       CACHE_TTL_SECONDS: "120"
+      CACHE_ENABLED: "${CACHE_ENABLED:-true}"
+      PAYMENT_SIMULATION_MS: "50"
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,12 +115,32 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      cadvisor:
+        condition: service_started
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
 
   grafana:
     image: grafana/grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 

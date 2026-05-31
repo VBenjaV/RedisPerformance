@@ -1,7 +1,13 @@
 from db.connection import get_connection
+from metrics import SQL_QUERIES
+
+
+def _track_sql(query: str):
+    SQL_QUERIES.labels(query=query).inc()
 
 
 def fetch_categories():
+    _track_sql("fetch_categories")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, name, slug FROM categories ORDER BY name")
@@ -9,6 +15,7 @@ def fetch_categories():
 
 
 def fetch_products(category_id: int | None = None, popular_only: bool = False):
+    _track_sql("fetch_products")
     query = """
         SELECT p.id, p.category_id, c.name AS category_name, p.name, p.description,
                p.price::float, p.stock, p.image_url, p.is_popular
@@ -30,6 +37,7 @@ def fetch_products(category_id: int | None = None, popular_only: bool = False):
 
 
 def fetch_product(product_id: int):
+    _track_sql("fetch_product")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -47,6 +55,7 @@ def fetch_product(product_id: int):
 
 
 def fetch_offers():
+    _track_sql("fetch_offers")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -63,6 +72,11 @@ def fetch_offers():
 
 
 def create_order(customer_email: str, items: list[dict]) -> dict:
+    """
+    Etapa 4 — la API solo persiste la orden en estado pending.
+    El descuento de stock ocurre en el subscriber de inventario (desacoplado).
+    """
+    _track_sql("create_order")
     with get_connection() as conn:
         with conn.cursor() as cur:
             total = 0.0
@@ -76,8 +90,6 @@ def create_order(customer_email: str, items: list[dict]) -> dict:
                 if not product:
                     raise ValueError(f"Producto {item['product_id']} no existe")
                 qty = item["quantity"]
-                if product["stock"] < qty:
-                    raise ValueError(f"Stock insuficiente para {product['name']}")
                 line_total = float(product["price"]) * qty
                 total += line_total
                 resolved.append({**dict(product), "quantity": qty, "line_total": line_total})
@@ -97,22 +109,46 @@ def create_order(customer_email: str, items: list[dict]) -> dict:
                     """,
                     (order_id, line["id"], line["quantity"], line["price"]),
                 )
-                cur.execute(
-                    "UPDATE products SET stock = stock - %s WHERE id = %s",
-                    (line["quantity"], line["id"]),
-                )
 
             conn.commit()
             return {
                 "order_id": order_id,
                 "customer_email": customer_email,
                 "total": total,
+                "status": "pending",
                 "items": resolved,
                 "created_at": str(order["created_at"]),
             }
 
 
+def deduct_stock(product_id: int, quantity: int) -> dict | None:
+    """Descuento atómico de stock — usado por el subscriber de inventario."""
+    _track_sql("deduct_stock")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE products SET stock = stock - %s
+                WHERE id = %s AND stock >= %s
+                RETURNING id, category_id, name, stock
+                """,
+                (quantity, product_id, quantity),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+
+
+def update_order_status(order_id: int, status: str) -> None:
+    _track_sql("update_order_status")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE orders SET status = %s WHERE id = %s", (status, order_id))
+            conn.commit()
+
+
 def update_product_stock(product_id: int, stock: int) -> dict | None:
+    _track_sql("update_product_stock")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -122,6 +158,23 @@ def update_product_stock(product_id: int, stock: int) -> dict | None:
                 RETURNING id, category_id, name, stock
                 """,
                 (stock, product_id),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+
+
+def update_product_price(product_id: int, price: float) -> dict | None:
+    _track_sql("update_product_price")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE products SET price = %s
+                WHERE id = %s
+                RETURNING id, category_id, name, price::float, stock
+                """,
+                (price, product_id),
             )
             row = cur.fetchone()
             conn.commit()
